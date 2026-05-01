@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mathedu - ODE Homogen Solver</title>
+    <!-- MathJax untuk rendering LaTeX -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f2f6;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1f3a5f;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: #4a627a;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin: 20px 0;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 8px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            font-size: 18px;
+            font-family: monospace;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+        }
+        button {
+            background: #1f3a5f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #2c5282;
+        }
+        .status {
+            margin-top: 20px;
+            font-style: italic;
+            color: #e53e3e;
+        }
+        .output {
+            margin-top: 30px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .step {
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+        }
+        .latex {
+            font-size: 1.2em;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.8em;
+            color: gray;
+        }
+        hr {
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1f3a5f;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🧮 ODE Homogen Orde Satu</h1>
+    <div class="subtitle">Penyelesaian dengan substitusi \( y = vx \) dan pemisahan variabel</div>
+
+    <div class="input-group">
+        <label>Masukkan \( f(x,y) \) dari \( \frac{dy}{dx} = f(x,y) \) :</label>
+        <input type="text" id="finput" value="(x+y)/(x-y)" placeholder="Contoh: (x+y)/(x-y)">
+        <button id="solveBtn">🔍 Selesaikan</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    <div id="output" class="output"></div>
+    <div class="footer">
+        ⚡ Menggunakan Pyodide (Python + SymPy berjalan di browser) | <a href="#" id="example1">Contoh: (x+y)/(x-y)</a> | <a href="#" id="example2">Contoh: (x**2+y**2)/(x*y)</a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
+<script>
+    let pyodideReady = null;
+    const statusDiv = document.getElementById('status');
+    const outputDiv = document.getElementById('output');
+    const solveBtn = document.getElementById('solveBtn');
+    const finput = document.getElementById('finput');
+
+    // Memuat Pyodide
+    statusDiv.innerHTML = '🔄 Memuat Pyodide (Python di browser)... Ini hanya sekali, tunggu sebentar.';
+    async function main() {
+        let pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/",
+        });
+        await pyodide.loadPackage("sympy");
+        statusDiv.innerHTML = '✅ Pyodide siap. Silakan masukkan persamaan.';
+        return pyodide;
+    }
+    pyodideReady = main();
+
+    // Fungsi untuk menyelesaikan ODE
+    async function solveODE(f_expr_str) {
+        const pyodide = await pyodideReady;
+        statusDiv.innerHTML = '<span class="spinner"></span> Menghitung...';
+        outputDiv.innerHTML = '';
+        
+        // Kode Python yang akan dijalankan
+        const pythonCode = `
+import sympy as sp
+import sys
+from io import StringIO
+
+def solve_homogeneous_ode(f_str):
+    x, y = sp.symbols('x y')
+    try:
+        f = sp.sympify(f_str)
+    except:
+        return "Error: Ekspresi tidak valid."
+
+    # Cek homogenitas
+    t = sp.symbols('t')
+    ft = f.subs({x: t*x, y: t*y})
+    if sp.simplify(ft - f) != 0:
+        return "Persamaan ini TIDAK homogen. Program hanya untuk ODE homogen."
+
+    # Langkah 1: Substitusi y = v*x
+    v = sp.symbols('v')
+    f_v = f.subs(y, v*x)
+    langkah1 = f"v + x dv/dx = {sp.latex(f_v)}"
+
+    # Langkah 2: Pisahkan variabel
+    pen = sp.simplify(f_v - v)
+    if pen == 0:
+        return "Kasus khusus dy/dx = y/x → solusi y = C*x"
+    # dv/dx = pen/x  →  dv/pen = dx/x
+    lhs = 1/pen
+    rhs = 1/x
+    langkah2 = f"\\\\frac{{1}}{{{sp.latex(pen)}}} dv = \\\\frac{{1}}{{x}} dx"
+
+    # Langkah 3: Integrasi
+    int_lhs = sp.integrate(lhs, v)
+    int_rhs = sp.integrate(rhs, x)
+    C = sp.Symbol('C')
+    langkah3 = f"{sp.latex(int_lhs)} = {sp.latex(int_rhs)} + C"
+
+    # Langkah 4: Substitusi balik v = y/x
+    sol_eq = sp.Eq(int_lhs, int_rhs + C).subs(v, y/x)
+    sol_eq_simplified = sp.simplify(sol_eq)
+    langkah4 = sp.latex(sol_eq_simplified)
+
+    # Solusi eksplisit jika memungkinkan
+    try:
+        y_sol = sp.solve(sol_eq_simplified, y)
+        explicit = [sp.latex(s) for s in y_sol] if y_sol else []
+    except:
+        explicit = []
+
+    return {
+        "langkah1": langkah1,
+        "langkah2": langkah2,
+        "langkah3": langkah3,
+        "solusi": langkah4,
+        "explicit": explicit,
+        "f_latex": sp.latex(f)
+    }
+
+result = solve_homogeneous_ode(f_str)
+print(result)
+`;
+        // Kirim string fungsi ke Python
+        const codeToRun = `
+f_str = r"""${f_expr_str}"""
+result = solve_homogeneous_ode(f_str)
+import json
+print(json.dumps(result, default=str))
+`;
+        try {
+            const output = await pyodide.runPythonAsync(codeToRun);
+            const result = JSON.parse(output);
+            if (typeof result === 'string') {
+                // Pesan error atau kasus khusus
+                outputDiv.innerHTML = `<div class="step">⚠️ ${result}</div>`;
+            } else {
+                let html = `<div class="step"><strong>📌 Persamaan:</strong> \\(\\frac{dy}{dx} = ${result.f_latex}\\)</div>`;
+                html += `<div class="step"><strong>1️⃣ Substitusi y = vx :</strong><br/> \\(${result.langkah1}\\)</div>`;
+                html += `<div class="step"><strong>2️⃣ Pisahkan variabel :</strong><br/> \\(${result.langkah2}\\)</div>`;
+                html += `<div class="step"><strong>3️⃣ Integrasi :</strong><br/> \\(${result.langkah3}\\)</div>`;
+                html += `<div class="step"><strong>4️⃣ Substitusi balik v = y/x :</strong><br/> \\(${result.solusi}\\)</div>`;
+                if (result.explicit && result.explicit.length > 0) {
+                    html += `<div class="step"><strong>✨ Bentuk eksplisit (jika ada):</strong><br/>`;
+                    result.explicit.forEach(e => { html += `\\(y = ${e}\\)<br/>`; });
+                    html += `</div>`;
+                }
+                outputDiv.innerHTML = html;
+                // Render ulang MathJax
+                if (window.MathJax) {
+                    MathJax.typesetPromise();
+                }
+            }
+            statusDiv.innerHTML = '✅ Selesai.';
+        } catch (err) {
+            statusDiv.innerHTML = '❌ Error: ' + err.message;
+            console.error(err);
+        }
+    }
+
+    solveBtn.onclick = () => {
+        let expr = finput.value.trim();
+        if (expr === "") {
+            statusDiv.innerHTML = "❌ Masukkan ekspresi terlebih dahulu.";
+            return;
+        }
+        solveODE(expr);
+    };
+
+    // Contoh cepat
+    document.getElementById('example1').onclick = (e) => {
+        e.preventDefault();
+        finput.value = "(x+y)/(x-y)";
+        solveODE(finput.value);
+    };
+    document.getElementById('example2').onclick = (e) => {
+        e.preventDefault();
+        finput.value = "(x**2+y**2)/(x*y)";
+        solveODE(finput.value);
+    };
+</script>
+</body>
+</html>
